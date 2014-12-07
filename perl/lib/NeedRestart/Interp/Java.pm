@@ -62,15 +62,18 @@ sub source {
     (my $bin, local @ARGV) = nr_parse_cmd($pid);
 
     # eat Java's command line options
-    my $p = GetOpt::Long::Parser->new;
-    $p->Configure(q(bundling_override));
+    my $p = Getopt::Long::Parser->new(
+	config => [qw(bundling_override)],
+	);
     my %opts;
-    $p->GetOptions(\%opts,
-	'cp|classpath=s@',
-	'jar=s',
+    $p->getoptions(\%opts,
+		   'cp|classpath=s@',
+		   'jar=s',
+		   'D=s@',
+		   'X=s@',
     );
 
-#    return $src;
+    return undef;
 }
 
 sub files {
