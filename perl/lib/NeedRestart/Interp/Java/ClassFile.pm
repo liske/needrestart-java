@@ -48,6 +48,12 @@ use List::Util qw(sum);
 use constant {
     CF_MAGIC => 0xCAFEBABE,
 
+    CF_HDR_MAGIC_TMPL => q(Nnnn),
+    CF_HDR_MAGIC_KEYS => [qw(magic minor_version major_version constant_pool_count)],
+
+    CF_HDR_CLASS_TMPL => q(nnn),
+    CF_HDR_CLASS_KEYS => [qw(access_flags this_class super_class)],
+
     CF_CONSTANT_Utf8 => 1,
     CF_CONSTANT_Integer => 3,
     CF_CONSTANT_Float => 4,
@@ -81,11 +87,12 @@ my %CF_CONSTANT_lengths = (
     (CF_CONSTANT_InvokeDynamic) => q(nn),
 );
 
+my $LOGPREF = '[Java-CF]';
 
 sub buf2struct {
     my $buf = shift;
     my $tpl = shift;
-    
+
     return map { my $v = $_; (shift(@_) => $v); } unpack($tpl, $buf);
 }
 
@@ -97,7 +104,7 @@ my %patlens = (
 
 sub tpllen {
     my $tpl = shift;
-    
+
     return sum map {($patlens{$_} || 0)} split(//, $tpl);
 }
 
@@ -105,24 +112,25 @@ sub load {
     my $class = shift;
     my $fn = shift;
     my $debug = shift;
-    
-    my $fh;
 
+    # open classfile from filename
+    my $fh;
     unless(open($fh, '<', $fn)) {
-	print STDERR "Could not open '$fn': $!\n" if($debug);
+	print STDERR "$LOGPREF Could not open '$fn': $!\n" if($debug);
 	return undef;
     }
     binmode($fh);
 
+    # check for magic number and some header values
     my $buf;
-    read($fh, $buf, 4 + 2 + 2 + 2);
-    
-    my %header = buf2struct($buf, "Nnnn", qw(magic minor_version major_version constant_pool_count));
+    read($fh, $buf, tpllen(CF_HDR_MAGIC_TMPL));
+    my %header = buf2struct($buf, CF_HDR_MAGIC_TMPL, @{(CF_HDR_MAGIC_KEYS)});
     if($header{magic} != CF_MAGIC) {
-	printf(STDERR "$fn has bad magic value: 0x%x != 0x%x\n", $header{magic}, CF_MAGIC) if($debug);
+	printf(STDERR "$LOGPREF $fn has bad magic value: 0x%x != 0x%x\n", $header{magic}, CF_MAGIC) if($debug);
 	return undef;
     }
 
+    # get class refs from CONSTANT_Pool
     my $i = 1;
     my %classrefs;
     my %utf8;
@@ -148,22 +156,24 @@ sub load {
 	    }
 	}
 	else {
-	    print STDERR "$fn #$i has unkown CONTENT_info entry (tag $tag)\n" if($debug);
+	    print STDERR "$LOGPREF $fn #$i has unkown CONTENT_info entry (tag $tag)\n" if($debug);
 	    return undef;
 	}
 
 	$i++;
     }
 
-    read($fh, $buf, 6);
-    my %header = (%header, buf2struct($buf, "nnn", qw(access_flags this_class super_class)));
+    # get class info from header (this_class)
+    read($fh, $buf, tpllen(CF_HDR_CLASS_TMPL));
+    %header = (%header, buf2struct($buf, CF_HDR_CLASS_TMPL, @{(CF_HDR_CLASS_KEYS)}));
     my $this_class = $utf8{ $classrefs{ $header{this_class} }};
     close($fh);
-    
+
     # strip inner classes;
     my @classes = map { ($utf8{$_} =~ /^$this_class(\$|$)/ ? () : $utf8{$_}) } values %classrefs;
-    
+
     return bless {
+	debug => $debug,
 	cf_fn => $fn,
 	cf_class => $this_class,
 	cf_classrefs => \@classes,
