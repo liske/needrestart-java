@@ -29,11 +29,11 @@ use warnings;
 
 use parent qw(NeedRestart::Interp);
 use Cwd qw(abs_path getcwd);
-use Getopt::Std;
+use Getopt::Long;
 use NeedRestart qw(:interp);
 use NeedRestart::Utils;
 
-use NeedRestart::Interp::ClassFile;
+use NeedRestart::Interp::Java::ClassFile;
 
 my $LOGPREF = '[Java]';
 
@@ -57,6 +57,18 @@ sub source {
     chdir($ptable->{cwd});
 
     chdir($cwd);
+
+    # get original ARGV
+    (my $bin, local @ARGV) = nr_parse_cmd($pid);
+
+    # eat Java's command line options
+    my $p = GetOpt::Long::Parser->new;
+    $p->Configure(q(bundling_override));
+    my %opts;
+    $p->GetOptions(\%opts,
+	'cp|classpath=s@',
+	'jar=s',
+    );
 
 #    return $src;
 }
