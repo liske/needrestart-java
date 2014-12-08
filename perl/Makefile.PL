@@ -5,6 +5,7 @@ WriteMakefile(
     'LICENSE'		=> 'gpl',
     'NAME'		=> 'NeedRestart::Interp::Java',
     'PREREQ_PM'		=> {
+	Archive::Zip => 0,
 	List::Util => 0,
     },
 );
