@@ -50,13 +50,12 @@ sub isa {
 }
 
 sub source {
+    print STDERR "HI\n";
     my $self = shift;
     my $pid = shift;
     my $ptable = nr_ptable_pid($pid);
     my $cwd = getcwd();
     chdir($ptable->{cwd});
-
-    chdir($cwd);
 
     # get original ARGV
     (my $bin, local @ARGV) = nr_parse_cmd($pid);
@@ -73,7 +72,30 @@ sub source {
 		   'X=s@',
     );
 
-    return undef;
+
+    use Data::Dumper;
+    print STDERR "$LOGPREF ".Dumper(\%opts) if($self->{debug});
+
+    chdir($cwd);
+
+    return ();
+}
+
+sub resolver {
+    my $self = shift;
+    my $cmap = shift;
+    my $class = shift;
+    my @cp = @_;
+
+    foreach my $cp (@cp) {
+	if(-d $cp) {
+	}
+	elsif(-f $cp) {
+	}
+	else {
+	    print STDERR "$LOGPREF ignore unknown classpath '$cp'" if($self->{debug});
+	}
+    }
 }
 
 sub files {
@@ -86,8 +108,31 @@ sub files {
     # get original ARGV
     (my $bin, local @ARGV) = nr_parse_cmd($pid);
 
+    # eat Java's command line options
+    my $p = Getopt::Long::Parser->new(
+	config => [qw(bundling_override)],
+	);
+    my %opts;
+    $p->getoptions(\%opts,
+		   'cp|classpath=s@',
+		   'jar=s',
+		   'D=s@',
+		   'X=s@',
+    );
+
+
+    my $class = shift(@ARGV);
+    return () unless($class =~ /\w+\.\w+/);
+
+    my %cmap = ();
+    $self->resolver(\%cmap, $class, $opts{cp});
+
+    use Data::Dumper;
+    print STDERR "$LOGPREF ".Dumper(\%cmap) if($self->{debug});
+
     chdir($cwd);
-#    return %ret;
+
+    return ();
 }
 
 1;
