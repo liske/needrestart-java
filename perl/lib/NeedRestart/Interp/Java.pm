@@ -29,10 +29,12 @@ use warnings;
 
 use parent qw(NeedRestart::Interp);
 use Cwd qw(abs_path getcwd);
+use File::Basename;
 use Getopt::Long;
 use NeedRestart qw(:interp);
 use NeedRestart::Utils;
 
+use NeedRestart::Interp::Java::JarFile;
 use NeedRestart::Interp::Java::ClassFile;
 
 my $LOGPREF = '[Java]';
@@ -49,8 +51,67 @@ sub isa {
     return 0;
 }
 
+sub cpbuild {
+    my $self = shift;
+    my $pid = shift;
+    my $opts = shift;
+
+    my $javadir = abs_path(dirname(nr_readlink($pid)).'/..');
+    my @cp = ("$javadir/lib/rt.jar", <$javadir/lib/ext/*.jar>, <$javadir/lib/ext/*.zip>);
+
+    if(exists($opts->{jar})) {
+	push(@cp, $opts->{jar});
+    }
+    elsif(exists($opts->{cp})) {
+	push(@cp, @{$opts->{cp}});
+    }
+
+    return @cp;
+}
+
+sub _scan($$$$$$) {
+    my $debug = shift;
+    my $pid = shift;
+    my $class = shift;
+    my $files = shift;
+    my $cpaths = shift;
+    my $cache = shift;
+
+    print STDERR "$LOGPREF searching $class...\n" if($debug);
+    unless(exists($cache->{$class})) {
+	foreach my $cp (@$cpaths) {
+	    if(-f $cp) {
+		print STDERR "$LOGPREF scanning $cp...\n" if($debug);
+
+		if((my $jf = NeedRestart::Interp::Java::JarFile->load($cp))) {
+		    foreach my $c (map {
+			my $f = $_->{fileName};
+			$f =~ s@/@.@g;
+			$f =~ s/\.class$//;
+			$f;
+				   } $jf->getClassFiles) {
+			$cache->{$c} = $cp;
+		    }
+
+		    if(exists($cache->{$class})) {
+			print STDERR "$LOGPREF found $class within $cp\n" if($debug);
+			last;
+		    }
+		}
+	    }
+	}
+    }
+
+    if(exists($cache->{$class})) {
+	# track file
+	$files->{$cache->{$class}}++;
+    }
+}
+
 sub source {
-    print STDERR "HI\n";
+    # not implemented
+    return undef;
+
     my $self = shift;
     my $pid = shift;
     my $ptable = nr_ptable_pid($pid);
@@ -72,30 +133,9 @@ sub source {
 		   'X=s@',
     );
 
-
-    use Data::Dumper;
-    print STDERR "$LOGPREF ".Dumper(\%opts) if($self->{debug});
-
     chdir($cwd);
 
-    return ();
-}
-
-sub resolver {
-    my $self = shift;
-    my $cmap = shift;
-    my $class = shift;
-    my @cp = @_;
-
-    foreach my $cp (@cp) {
-	if(-d $cp) {
-	}
-	elsif(-f $cp) {
-	}
-	else {
-	    print STDERR "$LOGPREF ignore unknown classpath '$cp'" if($self->{debug});
-	}
-    }
+    return undef;
 }
 
 sub files {
@@ -120,19 +160,22 @@ sub files {
 		   'X=s@',
     );
 
-
+    my @cp = $self->cpbuild($pid, \%opts);
+    
     my $class = shift(@ARGV);
     return () unless($class =~ /\w+\.\w+/);
 
-    my %cmap = ();
-    $self->resolver(\%cmap, $class, $opts{cp});
+    my %files;
+    my %cfcache;
+    _scan($self->{debug}, $pid, $class, \%files, \@cp, \%cfcache);
 
-    use Data::Dumper;
-    print STDERR "$LOGPREF ".Dumper(\%cmap) if($self->{debug});
+    my %ret = map {
+	my $stat = nr_stat($_);
+	$_ => ( defined($stat) ? $stat->{ctime} : undef );
+    } keys %files;
 
     chdir($cwd);
-
-    return ();
+    return %ret;
 }
 
 1;
