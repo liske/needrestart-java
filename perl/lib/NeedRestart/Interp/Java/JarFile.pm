@@ -30,7 +30,7 @@ use constant {
     JF_REGEX_JAR => '.+\.[cC][lL][aA][sS][sS]$',
 };
 
-my $LOGPREF = '[Java-CF]';
+my $LOGPREF = '[Java-JF]';
 
 sub load {
     my $class = shift;
